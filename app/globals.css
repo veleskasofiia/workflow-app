@@ -242,6 +242,16 @@ html, body {
 .feature-card:hover { transform: translateY(-5px); }
 .feature-card h3 { color: #2563eb; margin-bottom: 0.5rem; }
 
+/* Tracker & Budget showcase */
+.feature-showcase { display: flex; gap: 1.5rem; justify-content: center; max-width: 960px; margin: 0 auto; flex-wrap: wrap; }
+.showcase-card { background: white; border-radius: 16px; padding: 2rem 1.75rem; flex: 1; min-width: 240px; max-width: 300px; box-shadow: 0 4px 16px rgba(0,0,0,0.07); transition: transform 0.25s; }
+.showcase-card:hover { transform: translateY(-4px); }
+.showcase-icon { font-size: 2.2rem; margin-bottom: 0.75rem; }
+.showcase-title { font-size: 1.05rem; font-weight: 700; color: #1e293b; margin-bottom: 0.5rem; }
+.showcase-desc { font-size: 0.85rem; color: #64748b; margin-bottom: 1rem; line-height: 1.5; }
+.showcase-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 0.35rem; }
+.showcase-list li { font-size: 0.8rem; color: #475569; }
+
 /* Workflow diagram */
 .workflow-section { text-align: center; padding: 2rem; }
 .workflow-section h2 { font-size: 1.8rem; color: #2563eb; margin-bottom: 1.5rem; }
@@ -429,6 +439,23 @@ html, body {
 .app-nav-dropdown-item.danger { color: #f87171; }
 .app-nav-dropdown-item.danger:hover { background: #450a0a; color: #fca5a5; }
 .app-nav-dropdown-divider { height: 1px; background: #334155; margin: 2px 0; }
+
+/* ── Notification bell ─────────────────────────────────────────────── */
+.app-nav-bell { position: relative; background: none; border: 1px solid #334155; border-radius: 8px; cursor: pointer; padding: 6px 9px; color: #94a3b8; line-height: 0; transition: border-color 0.15s, color 0.15s; display: flex; align-items: center; }
+.app-nav-bell:hover { border-color: #6366f1; color: #a5b4fc; }
+.app-nav-bell-badge { position: absolute; top: -5px; right: -5px; background: #ef4444; color: white; font-size: 0.55rem; font-weight: 700; border-radius: 999px; min-width: 16px; height: 16px; display: flex; align-items: center; justify-content: center; padding: 0 3px; line-height: 1; }
+.app-nav-notif-dropdown { position: absolute; top: calc(100% + 10px); right: 0; width: 320px; background: #1e293b; border: 1px solid #334155; border-radius: 12px; box-shadow: 0 8px 32px rgba(0,0,0,0.35); z-index: 1000; overflow: hidden; }
+.app-nav-notif-header { display: flex; align-items: center; justify-content: space-between; padding: 0.75rem 1rem; border-bottom: 1px solid #334155; font-size: 0.8rem; font-weight: 600; color: #f1f5f9; }
+.app-nav-notif-markall { background: none; border: none; cursor: pointer; font-size: 0.72rem; color: #6366f1; padding: 0; font-family: inherit; }
+.app-nav-notif-markall:hover { color: #818cf8; }
+.app-nav-notif-empty { padding: 1.5rem 1rem; text-align: center; font-size: 0.82rem; color: #64748b; }
+.app-nav-notif-item { padding: 0.75rem 1rem; border-bottom: 1px solid #1e293b; cursor: pointer; transition: background 0.1s; }
+.app-nav-notif-item:hover { background: #0f172a; }
+.app-nav-notif-item.unread { background: #1a2744; border-left: 3px solid #6366f1; }
+.app-nav-notif-item.unread:hover { background: #162036; }
+.app-nav-notif-title { font-size: 0.78rem; font-weight: 600; color: #f1f5f9; margin-bottom: 2px; }
+.app-nav-notif-body { font-size: 0.72rem; color: #94a3b8; margin-bottom: 4px; display: -webkit-box; -webkit-line-clamp: 2; line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.app-nav-notif-time { font-size: 0.65rem; color: #475569; }
 
 /* ── Workflow page (n8n-style) ───────────────────────────────────── */
 .workflow-page {
@@ -2567,6 +2594,11 @@ footer {
 .budget-select:focus { border-color: #6366f1; }
 .budget-add-btn { padding: 0.5rem 1rem; background: #6366f1; color: white; border: none; border-radius: 8px; font-size: 0.9rem; font-weight: 600; cursor: pointer; font-family: inherit; white-space: nowrap; align-self: flex-end; }
 .budget-add-btn:hover { background: #4f46e5; }
+.budget-cat-add-btn { background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 6px; cursor: pointer; font-size: 1rem; font-weight: 700; color: #6366f1; padding: 2px 8px; line-height: 1.4; flex-shrink: 0; transition: background 0.12s; }
+.budget-cat-add-btn:hover { background: #e0e7ff; }
+.budget-cat-del-btn { background: none; border: none; cursor: pointer; font-size: 0.85rem; padding: 2px 4px; opacity: 0.6; flex-shrink: 0; }
+.budget-cat-del-btn:hover { opacity: 1; }
+.budget-cat-input-row { display: flex; gap: 0.4rem; margin-top: 0.4rem; }
 .budget-list { display: flex; flex-direction: column; gap: 0.4rem; max-height: 320px; overflow-y: auto; }
 .budget-entry { display: flex; align-items: center; gap: 0.75rem; padding: 0.6rem 0.75rem; background: #f8fafc; border-radius: 8px; }
 .budget-entry-type { width: 28px; height: 28px; border-radius: 8px; display: flex; align-items: center; justify-content: center; font-size: 0.85rem; font-weight: 700; flex-shrink: 0; }

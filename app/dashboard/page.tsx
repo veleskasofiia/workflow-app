@@ -541,17 +541,58 @@ function BudgetTab({ userId }: { userId: string }) {
   const [category, setCategory]     = useState("Food");
   const [date, setDate]             = useState(todayStr());
   const [note, setNote]             = useState("");
-  const [currency, setCurrency]     = useState<Currency>("USD");
+  const [currency, setCurrency]         = useState<Currency>("USD");
+  const [customExpCats, setCustomExpCats] = useState<string[]>([]);
+  const [customIncCats, setCustomIncCats] = useState<string[]>([]);
+  const [newCatName, setNewCatName]       = useState("");
+  const [showAddCat, setShowAddCat]       = useState(false);
 
   useEffect(() => {
     const saved = localStorage.getItem(`budget_currency_${userId}`);
     if (saved && saved in CURRENCIES) setCurrency(saved as Currency);
+    const ec = localStorage.getItem(`budget_exp_cats_${userId}`);
+    const ic = localStorage.getItem(`budget_inc_cats_${userId}`);
+    if (ec) setCustomExpCats(JSON.parse(ec));
+    if (ic) setCustomIncCats(JSON.parse(ic));
   }, [userId]);
 
   const changeCurrency = (c: Currency) => {
     setCurrency(c);
     localStorage.setItem(`budget_currency_${userId}`, c);
   };
+
+  const addCategory = () => {
+    const name = newCatName.trim();
+    if (!name) return;
+    if (type === "expense") {
+      const next = [...customExpCats, name];
+      setCustomExpCats(next);
+      localStorage.setItem(`budget_exp_cats_${userId}`, JSON.stringify(next));
+    } else {
+      const next = [...customIncCats, name];
+      setCustomIncCats(next);
+      localStorage.setItem(`budget_inc_cats_${userId}`, JSON.stringify(next));
+    }
+    setCategory(name);
+    setNewCatName("");
+    setShowAddCat(false);
+  };
+
+  const removeCategory = (cat: string) => {
+    if (type === "expense") {
+      const next = customExpCats.filter(c => c !== cat);
+      setCustomExpCats(next);
+      localStorage.setItem(`budget_exp_cats_${userId}`, JSON.stringify(next));
+    } else {
+      const next = customIncCats.filter(c => c !== cat);
+      setCustomIncCats(next);
+      localStorage.setItem(`budget_inc_cats_${userId}`, JSON.stringify(next));
+    }
+    setCategory(type === "expense" ? "Food" : "Salary");
+  };
+
+  const expCats = [...EXPENSE_CATS, ...customExpCats];
+  const incCats = [...INCOME_CATS, ...customIncCats];
 
   const sym = CURRENCIES[currency];
 
@@ -584,10 +625,11 @@ function BudgetTab({ userId }: { userId: string }) {
   const balance      = totalIncome - totalExpense;
 
   // Pie: expense by category this month
-  const pieData = EXPENSE_CATS.map(cat => ({
+  const pieData = expCats.map(cat => ({
     name: cat,
     value: entries.filter(e => e.type === "expense" && e.category === cat).reduce((s, e) => s + e.amount, 0),
   })).filter(d => d.value > 0);
+  const pieTotal = pieData.reduce((s, d) => s + d.value, 0);
 
   // Bar: income vs expense last 6 months
   const barData = Array.from({ length: 6 }, (_, mi) => {
@@ -623,9 +665,27 @@ function BudgetTab({ userId }: { userId: string }) {
             onChange={e => setAmount(e.target.value)} onKeyDown={e => e.key === "Enter" && add()} style={{ width: 110 }} />
         </div>
         <div className="budget-field"><label>Category</label>
-          <select className="budget-select" value={category} onChange={e => setCategory(e.target.value)}>
-            {(type === "income" ? INCOME_CATS : EXPENSE_CATS).map(c => <option key={c}>{c}</option>)}
-          </select>
+          <div style={{ display: "flex", gap: "0.4rem", alignItems: "center" }}>
+            <select className="budget-select" value={category} onChange={e => setCategory(e.target.value)}>
+              {(type === "income" ? incCats : expCats).map(c => (
+                <option key={c} value={c}>
+                  {c}{(type === "expense" ? customExpCats : customIncCats).includes(c) ? " ✕" : ""}
+                </option>
+              ))}
+            </select>
+            <button className="budget-cat-add-btn" onClick={() => setShowAddCat(v => !v)} title="Add category">+</button>
+            {(type === "expense" ? customExpCats : customIncCats).includes(category) && (
+              <button className="budget-cat-del-btn" onClick={() => removeCategory(category)} title="Delete this category">🗑</button>
+            )}
+          </div>
+          {showAddCat && (
+            <div className="budget-cat-input-row">
+              <input className="budget-input" placeholder="e.g. Rent" value={newCatName}
+                onChange={e => setNewCatName(e.target.value)}
+                onKeyDown={e => e.key === "Enter" && addCategory()} autoFocus />
+              <button className="budget-add-btn" style={{ padding: "0.4rem 0.75rem", fontSize: "0.8rem" }} onClick={addCategory}>Add</button>
+            </div>
+          )}
         </div>
         <div className="budget-field"><label>Date</label>
           <input className="budget-input" type="date" value={date} onChange={e => setDate(e.target.value)} style={{ width: 140 }} />
@@ -656,12 +716,21 @@ function BudgetTab({ userId }: { userId: string }) {
         {pieData.length === 0 ? (
           <div className="budget-empty">No expenses recorded yet.</div>
         ) : (
-          <ResponsiveContainer width="100%" height={210}>
+          <ResponsiveContainer width="100%" height={340}>
             <PieChart>
-              <Pie data={pieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${Math.round(percent * 100)}%`} labelLine={false}>
+              <Pie data={pieData} cx="50%" cy="45%" outerRadius={110} dataKey="value">
                 {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
               </Pie>
               <Tooltip formatter={(v: number) => [`${sym}${v.toFixed(2)}`, ""]} />
+              <Legend
+                iconType="circle"
+                iconSize={9}
+                formatter={(value: string, entry: { payload?: { value?: number } }) => {
+                  const pct = pieTotal > 0 ? Math.round(((entry.payload?.value ?? 0) / pieTotal) * 100) : 0;
+                  return `${value} ${pct}%`;
+                }}
+                wrapperStyle={{ fontSize: "0.75rem", paddingTop: "10px", lineHeight: "1.8" }}
+              />
             </PieChart>
           </ResponsiveContainer>
         )}
@@ -733,6 +802,12 @@ export default function DashboardPage() {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const prevUnreadRef = useRef<number | null>(null);
   const [dashTab, setDashTab] = useState<"overview" | "apps" | "tracker" | "finance" | "settings">("tracker");
+
+  useEffect(() => {
+    const saved = localStorage.getItem("flowboard_tab");
+    if (saved && ["overview", "apps", "tracker", "finance", "settings"].includes(saved))
+      setDashTab(saved as "overview" | "apps" | "tracker" | "finance" | "settings");
+  }, []);
   const notifiedMeetingsRef = useRef<Set<string>>(new Set());
   const toastIdRef = useRef(0);
 
@@ -759,6 +834,7 @@ setActivityLog(JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]"));
       fetchConnections(user.id);
       fetchEmails(user.id);
       fetchTasks(user.id);
+      checkDailyRoutine(user.id);
 
       // Request browser notification permission
       if (typeof Notification !== "undefined" && Notification.permission === "default") {
@@ -775,6 +851,41 @@ setActivityLog(JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]"));
     }
     init();
   }, [router]);
+
+  async function checkDailyRoutine(userId: string) {
+    const hour = new Date().getHours();
+    if (hour < 12) return; // only remind after noon
+
+    const today = todayStr();
+    const notifKey = `routine_notif_${userId}_${today}`;
+    if (localStorage.getItem(notifKey)) return; // already notified today
+
+    const now = new Date();
+    const monthStart = fmtDate(new Date(now.getFullYear(), now.getMonth(), 1));
+    const monthEnd   = fmtDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+
+    const [{ data: habits }, { data: logs }, { data: tasks }] = await Promise.all([
+      supabase.from("habits").select("id,name").eq("user_id", userId),
+      supabase.from("habit_logs").select("habit_id").eq("user_id", userId).gte("date", monthStart).lte("date", monthEnd).eq("date", today),
+      supabase.from("tasks").select("id,completed").eq("user_id", userId).eq("date", today),
+    ]);
+
+    const loggedIds = new Set((logs ?? []).map((l: { habit_id: string }) => l.habit_id));
+    const unloggedHabits = (habits ?? []).filter((h: { id: string }) => !loggedIds.has(h.id));
+    const incompleteTasks = (tasks ?? []).filter((t: { completed: boolean }) => !t.completed);
+
+    const parts: string[] = [];
+    if (unloggedHabits.length > 0) parts.push(`${unloggedHabits.length} habit${unloggedHabits.length > 1 ? "s" : ""} not logged`);
+    if (incompleteTasks.length > 0) parts.push(`${incompleteTasks.length} task${incompleteTasks.length > 1 ? "s" : ""} incomplete`);
+
+    if (parts.length === 0) return;
+
+    const body = `You still have ${parts.join(" and ")} for today. Don't break your streak!`;
+    await supabase.from("notifications").insert({
+      user_id: userId, title: "Daily routine reminder", body, read: false, source: "routine",
+    });
+    localStorage.setItem(notifKey, "1");
+  }
 
   async function fetchConnections(entityId: string) {
     try {
@@ -1061,7 +1172,7 @@ setActivityLog(JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]"));
 
   return (
     <div className="dash-page">
-      <NavBar onSignOut={handleSignOut} onSettings={() => setDashTab("settings")} />
+      <NavBar onSignOut={handleSignOut} onSettings={() => { setDashTab("settings"); localStorage.setItem("flowboard_tab", "settings"); }} />
 
       <main className="dash-main">
 
@@ -1084,7 +1195,7 @@ setActivityLog(JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]"));
             <button
               key={t.key}
               className={`tracker-tab-btn${dashTab === t.key ? " active" : ""}`}
-              onClick={() => setDashTab(t.key)}
+              onClick={() => { setDashTab(t.key); localStorage.setItem("flowboard_tab", t.key); }}
             >
               {t.label}
             </button>

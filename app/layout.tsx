@@ -6,8 +6,20 @@ const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
   title: "FlowBoard",
-  description: "Manage Gmail, Calendar, Notion, and Slack in one sleek workspace",
+  description: "Your personal productivity dashboard — calendar, habits, budget tracker, and AI assistant in one place.",
   icons: { icon: "/logo.svg" },
+  openGraph: {
+    title: "FlowBoard — Your personal productivity dashboard",
+    description: "Track your daily routines, habits, budget, and connect Gmail, Slack, Notion & more with an AI assistant.",
+    url: "https://flow-board-app-mu.vercel.app",
+    siteName: "FlowBoard",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "FlowBoard — Your personal productivity dashboard",
+    description: "Track your daily routines, habits, budget, and connect Gmail, Slack, Notion & more with an AI assistant.",
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

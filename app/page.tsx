@@ -1,5 +1,5 @@
 "use client";
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import Image from "next/image";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
@@ -10,13 +10,10 @@ const APPS = [
   { key: "ocal",     label: "Outlook Calendar", icon: "📆", color: "#0f6cbd" },
   { key: "calendar", label: "Google Calendar",  icon: "📅", color: "#4285f4" },
   { key: "gdrive",   label: "Google Drive",     icon: "📁", color: "#34a853" },
-];
-
-const WORKFLOW_STEPS = [
-  { icon: "⚡", label: "Webhook",      desc: "Event received" },
-  { icon: "📧", label: "Gmail",        desc: "Fetch emails" },
-  { icon: "🔀", label: "IF",           desc: "Filter important" },
-  { icon: "📨", label: "Outlook Mail", desc: "Send digest" },
+  { key: "tracker",  label: "Tracker",          icon: "📋", color: "#6366f1" },
+  { key: "habits",   label: "Habit Tracker",    icon: "💪", color: "#8b5cf6" },
+  { key: "budget",   label: "Budget",           icon: "💰", color: "#10b981" },
+  { key: "pulse",    label: "Daily Pulse",      icon: "🌤️", color: "#f59e0b" },
 ];
 
 export default function HomePage() {
@@ -26,13 +23,6 @@ export default function HomePage() {
   const [authError, setAuthError] = useState("");
   const [authSuccess, setAuthSuccess] = useState(false);
   const [loading, setLoading] = useState(false);
-
-  // Animated workflow step
-  const [activeStep, setActiveStep] = useState(0);
-  useEffect(() => {
-    const t = setInterval(() => setActiveStep((s) => (s + 1) % WORKFLOW_STEPS.length), 1400);
-    return () => clearInterval(t);
-  }, []);
 
   async function handleSignup(e: React.FormEvent) {
     e.preventDefault();
@@ -60,7 +50,7 @@ export default function HomePage() {
           </div>
         </div>
 
-        <p className="hero-typewriter">All your tools, one Flow.</p>
+        <p className="hero-typewriter">Plan. Track. Automate.</p>
       </header>
 
       <div className="main-content">
@@ -68,10 +58,10 @@ export default function HomePage() {
         {/* ── Fade-up intro ── */}
         <section className="section-block fadeup-section">
           <h2 className="section-title fadeup" style={{ animationDelay: "0.1s" }}>
-            One dashboard for everything
+            Your productivity, all in one place
           </h2>
           <p className="section-subtitle fadeup" style={{ animationDelay: "0.25s" }}>
-            Connect Gmail, Outlook, Google Calendar and more. Let the AI handle the repetitive work.
+            Track habits, plan your week, manage your budget, and connect your apps — all from one dashboard.
           </p>
           <div className="fadeup hero-cta-row" style={{ animationDelay: "0.4s" }}>
             <a href="/auth/signup" className="hero-cta-btn-primary">Get Started Free</a>
@@ -98,23 +88,43 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* ── Animated workflow ── */}
+        {/* ── Tracker & Budget showcase ── */}
         <section className="section-block">
-          <h2 className="section-title">Watch the AI work</h2>
+          <h2 className="section-title">Track your day & your budget</h2>
           <p className="section-subtitle" style={{ marginBottom: "2rem" }}>
-            A live workflow runs step by step — triggered, filtered, and delivered automatically.
+            Plan every week, build daily habits, and stay on top of your finances — all in one place.
           </p>
-          <div className="anim-workflow">
-            {WORKFLOW_STEPS.map((step, i) => (
-              <div key={i} className={`anim-step${i === activeStep ? " active" : i < activeStep ? " done" : ""}`}>
-                <div className="anim-step-icon">{step.icon}</div>
-                <div className="anim-step-label">{step.label}</div>
-                <div className="anim-step-desc">{step.desc}</div>
-                {i < WORKFLOW_STEPS.length - 1 && (
-                  <div className={`anim-step-arrow${i < activeStep ? " done" : ""}`}>→</div>
-                )}
-              </div>
-            ))}
+          <div className="feature-showcase">
+            <div className="showcase-card">
+              <div className="showcase-icon">📅</div>
+              <h3 className="showcase-title">Weekly Calendar</h3>
+              <p className="showcase-desc">Add goals to each day, check them off, and copy tasks forward. Navigate any week — past or future.</p>
+              <ul className="showcase-list">
+                <li>✓ Per-day goals with checkmarks</li>
+                <li>✓ Copy task to next day</li>
+                <li>✓ Navigate months & years</li>
+              </ul>
+            </div>
+            <div className="showcase-card">
+              <div className="showcase-icon">💪</div>
+              <h3 className="showcase-title">Habit Tracker</h3>
+              <p className="showcase-desc">Log daily habits across the month. See your streaks and completion rate at a glance.</p>
+              <ul className="showcase-list">
+                <li>✓ Daily habit check-ins</li>
+                <li>✓ Monthly grid view</li>
+                <li>✓ Completion charts</li>
+              </ul>
+            </div>
+            <div className="showcase-card">
+              <div className="showcase-icon">💰</div>
+              <h3 className="showcase-title">Budget Tracker</h3>
+              <p className="showcase-desc">Log income and expenses, see your balance, and visualize spending by category.</p>
+              <ul className="showcase-list">
+                <li>✓ USD, EUR and CZK support</li>
+                <li>✓ Pie & bar charts</li>
+                <li>✓ 6-month history</li>
+              </ul>
+            </div>
           </div>
         </section>
 
@@ -147,8 +157,12 @@ export default function HomePage() {
               <p>Bring all your tools into one workspace with a single click.</p>
             </div>
             <div className="feature-card">
-              <h3>⚡ Sync</h3>
-              <p>Keep your data updated in real time across every app.</p>
+              <h3>📅 Track Daily Routines</h3>
+              <p>Plan your week, check off daily goals, and build habits — all in one calendar view.</p>
+            </div>
+            <div className="feature-card">
+              <h3>💰 Budget Tracker</h3>
+              <p>Log income and expenses, visualize spending by category, and track your balance in USD, EUR, or CZK.</p>
             </div>
             <div className="feature-card">
               <h3>🤖 Automate</h3>

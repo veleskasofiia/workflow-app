@@ -46,7 +46,10 @@ const PALETTE: AppEntry[] = [
   { key: "ocal",     label: "Outlook Calendar", icon: "📆", color: "#0f6cbd", category: "action",  desc: "Read & create calendar events" },
   { key: "calendar", label: "Google Calendar",  icon: "📅", color: "#4285f4", category: "action",  desc: "List & create Google events" },
   { key: "gdrive",   label: "Google Drive",     icon: "📁", color: "#34a853", category: "action",  desc: "Upload, read & manage files" },
-  { key: "ifelse",   label: "IF Condition",     icon: "🔀", color: "#6b7280", category: "action",  desc: "Branch flow based on a condition" },
+  { key: "tracker",  label: "Tracker",          icon: "📋", color: "#6366f1", category: "action",  desc: "Read today's tasks & habits from FlowBoard" },
+  { key: "budget",   label: "Budget",           icon: "💰", color: "#10b981", category: "action",  desc: "Get this month's income, expenses & balance" },
+  { key: "notify",   label: "Notify",            icon: "🔔", color: "#8b5cf6", category: "action",  desc: "Send an in-app notification to the user" },
+  { key: "ifelse",   label: "IF Condition",      icon: "🔀", color: "#6b7280", category: "action",  desc: "Branch flow based on a condition" },
 ];
 
 const PALETTE_BY_KEY = Object.fromEntries(PALETTE.map((a) => [a.key, a]));
@@ -84,6 +87,36 @@ const TEMPLATES: Template[] = [
     edges: [
       { id: "te1", source: "t1", target: "t2", type: "deletable", animated: true, style: { stroke: "#f59e0b", strokeWidth: 2.5 }, data: { color: "#f59e0b" } },
       { id: "te2", source: "t2", target: "t3", type: "deletable", animated: true, style: { stroke: "#4285f4", strokeWidth: 2.5 }, data: { color: "#4285f4" } },
+    ],
+  },
+  {
+    id: "morning-routine",
+    name: "Morning Routine",
+    emoji: "📋",
+    desc: "Fetch today's tasks from Tracker and email yourself a morning briefing",
+    nodes: [
+      { id: "t1", type: "appNode", position: { x: 80,  y: 200 }, data: { ...PALETTE_BY_KEY["webhook"]  } },
+      { id: "t2", type: "appNode", position: { x: 340, y: 200 }, data: { ...PALETTE_BY_KEY["tracker"], note: "Get today's tasks" } },
+      { id: "t3", type: "appNode", position: { x: 600, y: 200 }, data: { ...PALETTE_BY_KEY["gmail"],   note: "Send morning briefing" } },
+    ],
+    edges: [
+      { id: "te1", source: "t1", target: "t2", type: "deletable", animated: true, style: { stroke: "#f59e0b", strokeWidth: 2.5 }, data: { color: "#f59e0b" } },
+      { id: "te2", source: "t2", target: "t3", type: "deletable", animated: true, style: { stroke: "#6366f1", strokeWidth: 2.5 }, data: { color: "#6366f1" } },
+    ],
+  },
+  {
+    id: "budget-summary",
+    name: "Budget Summary",
+    emoji: "💰",
+    desc: "Get your monthly budget summary and send it to Gmail",
+    nodes: [
+      { id: "t1", type: "appNode", position: { x: 80,  y: 200 }, data: { ...PALETTE_BY_KEY["webhook"] } },
+      { id: "t2", type: "appNode", position: { x: 340, y: 200 }, data: { ...PALETTE_BY_KEY["budget"],  note: "Get monthly summary" } },
+      { id: "t3", type: "appNode", position: { x: 600, y: 200 }, data: { ...PALETTE_BY_KEY["gmail"],   note: "Email the report" } },
+    ],
+    edges: [
+      { id: "te1", source: "t1", target: "t2", type: "deletable", animated: true, style: { stroke: "#f59e0b", strokeWidth: 2.5 }, data: { color: "#f59e0b" } },
+      { id: "te2", source: "t2", target: "t3", type: "deletable", animated: true, style: { stroke: "#10b981", strokeWidth: 2.5 }, data: { color: "#10b981" } },
     ],
   },
   {
@@ -488,14 +521,16 @@ export default function ConnectedAppsPage() {
     setRunning(true); setRunResult(null);
     try {
       const { data: { user } } = await supabase.auth.getUser();
+      const { data: { session } } = await supabase.auth.getSession();
       const entityId = user?.id ?? "default";
+      const accessToken = session?.access_token ?? "";
       const payload = nodesRef.current.map((n) => ({
         label: (n.data as AppNodeData).label,
         category: (n.data as AppNodeData).category,
       }));
       const res = await fetch("/api/run", {
         method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nodes: payload, entityId }),
+        body: JSON.stringify({ nodes: payload, entityId, accessToken }),
       });
       const data = await res.json();
       const result: string = data.result ?? "Workflow ran.";

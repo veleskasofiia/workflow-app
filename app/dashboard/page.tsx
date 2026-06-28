@@ -1,11 +1,11 @@
 "use client";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
 import type { User } from "@supabase/supabase-js";
 import NavBar from "@/components/NavBar";
+import { AreaChart, Area, BarChart, Bar, LineChart, Line, PieChart, Pie, Cell, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from "recharts";
 
-type RunRecord = { id: number; result: string; nodes: string[]; ts: string };
 type EmailItem = { id: string; threadId?: string; subject: string; from: string; snippet: string; date: string; source: "gmail" | "outlook"; isRead: boolean };
 
 type Meeting = { title: string; start: string; source: string };
@@ -35,124 +35,656 @@ function logActivity(icon: string, text: string) {
 
 type Toast = { id: number; icon: string; text: string };
 
-const APPS = [
-  { key: "gmail",    label: "Gmail",            icon: "📧", color: "#ea4335" },
-  { key: "outlook",  label: "Outlook Mail",     icon: "📨", color: "#0078d4" },
-  { key: "ocal",     label: "Outlook Calendar", icon: "📆", color: "#0f6cbd" },
-  { key: "calendar", label: "Google Calendar",  icon: "📅", color: "#4285f4" },
-  { key: "gdrive",   label: "Google Drive",     icon: "📁", color: "#34a853" },
-];
 
-const STEPS = [
-  {
-    number: "1",
-    icon: "⚡",
-    title: "Choose a Trigger",
-    desc: "In the Workflow page, drag a Webhook or Schedule node from the left panel onto the canvas. This starts your flow.",
-    color: "#f59e0b",
-  },
-  {
-    number: "2",
-    icon: "🔗",
-    title: "Add App Actions",
-    desc: "Drag any app node (Gmail, Slack, Notion…) from the Actions section and drop it on the canvas. Draw an arrow from your trigger to the action.",
-    color: "#2563eb",
-  },
-  {
-    number: "3",
-    icon: "🔀",
-    title: "Add an IF Condition (optional)",
-    desc: 'Drag the "IF Condition" node from the Actions section. Connect your trigger to it, then connect two separate app nodes for the true and false paths.',
-    color: "#7c3aed",
-  },
-];
+// ── Tracker types ─────────────────────────────────────────────────────────
+type Habit     = { id: string; name: string; color: string };
+type HabitLog  = { habit_id: string; date: string };
+type TTask     = { id: string; title: string; date: string | null; completed: boolean; is_weekly_goal: boolean };
+type PulseEntry = { date: string; sleep: number; energy: number; mood: number };
+type BudgetRow  = { id: string; amount: number; category: string; type: "income" | "expense"; date: string; note: string };
 
-const AI_PROMPTS = [
-  "How do I connect Gmail to Outlook?",
-  "How do I use the IF Condition node?",
-  "Set up a daily schedule that sends an email digest",
-  "What's the difference between Webhook and Schedule?",
-  "How do I connect Outlook Calendar to Google Calendar?",
-  "Create a workflow that filters emails by subject",
-];
+const HABIT_COLORS  = ["#6366f1","#f59e0b","#10b981","#ef4444","#3b82f6","#ec4899","#8b5cf6","#14b8a6"];
+const EXPENSE_CATS  = ["Food","Transport","Shopping","Health","Entertainment","Bills","Other"];
+const INCOME_CATS   = ["Salary","Freelance","Gift","Other"];
+const todayStr = () => new Date().toISOString().split("T")[0];
+const fmtDate  = (d: Date) => d.toISOString().split("T")[0];
 
-type ExampleNode = { id: string; type: string; position: { x: number; y: number }; data: { label: string; icon: string; color: string; category: "trigger" | "action" } };
-type ExampleEdge = { id: string; source: string; target: string; type: string; animated: boolean; style: { stroke: string; strokeWidth: number } };
+// ── Habits Tab ────────────────────────────────────────────────────────────
+const PIE_COLORS = ["#6366f1","#f59e0b","#10b981","#ef4444","#3b82f6","#ec4899","#8b5cf6","#14b8a6"];
 
-const EXAMPLE_WORKFLOWS = [
-  {
-    id: "email-digest",
-    title: "Daily Email Digest",
-    description: "Every morning, fetch unread Gmail threads, filter important ones, and forward a digest via Outlook.",
-    tags: ["Gmail", "IF Condition", "Outlook Mail"],
-    color: "#6366f1",
-    steps: [
-      { icon: "⏰", label: "Schedule", desc: "Runs every day at 8 AM" },
-      { icon: "📧", label: "Gmail", desc: "Fetch unread inbox threads" },
-      { icon: "🔀", label: "IF Condition", desc: "Is it marked important?" },
-      { icon: "📨", label: "Outlook Mail", desc: "Send digest to yourself" },
-    ],
-    nodes: [
-      { id: "1", type: "appNode", position: { x: 60,  y: 180 }, data: { label: "Schedule",     icon: "⏰", color: "#8b5cf6", category: "trigger" } },
-      { id: "2", type: "appNode", position: { x: 300, y: 180 }, data: { label: "Gmail",         icon: "📧", color: "#ea4335", category: "action"  } },
-      { id: "3", type: "appNode", position: { x: 540, y: 180 }, data: { label: "IF Condition",  icon: "🔀", color: "#6b7280", category: "action"  } },
-      { id: "4", type: "appNode", position: { x: 760, y: 180 }, data: { label: "Outlook Mail",  icon: "📨", color: "#0078d4", category: "action"  } },
-    ] as ExampleNode[],
-    edges: [
-      { id: "e1-2", source: "1", target: "2", type: "smoothstep", animated: true, style: { stroke: "#94a3b8", strokeWidth: 2 } },
-      { id: "e2-3", source: "2", target: "3", type: "smoothstep", animated: true, style: { stroke: "#94a3b8", strokeWidth: 2 } },
-      { id: "e3-4", source: "3", target: "4", type: "smoothstep", animated: true, style: { stroke: "#0078d4", strokeWidth: 2 } },
-    ] as ExampleEdge[],
-  },
-  {
-    id: "meeting-prep",
-    title: "Automatic Meeting Prep",
-    description: "Before each meeting, pull calendar details, search related emails, and send a prep summary to yourself.",
-    tags: ["Schedule", "Google Calendar", "Gmail", "Outlook Mail"],
-    color: "#0ea5e9",
-    steps: [
-      { icon: "⏰", label: "Schedule", desc: "Runs every morning at 7 AM" },
-      { icon: "📅", label: "Google Calendar", desc: "Get today's meetings" },
-      { icon: "📧", label: "Gmail", desc: "Find related email threads" },
-      { icon: "📨", label: "Outlook Mail", desc: "Send prep summary email" },
-    ],
-    nodes: [
-      { id: "1", type: "appNode", position: { x: 60,  y: 180 }, data: { label: "Schedule",        icon: "⏰", color: "#8b5cf6", category: "trigger" } },
-      { id: "2", type: "appNode", position: { x: 300, y: 180 }, data: { label: "Google Calendar",  icon: "📅", color: "#4285f4", category: "action"  } },
-      { id: "3", type: "appNode", position: { x: 540, y: 180 }, data: { label: "Gmail",            icon: "📧", color: "#ea4335", category: "action"  } },
-      { id: "4", type: "appNode", position: { x: 780, y: 180 }, data: { label: "Outlook Mail",     icon: "📨", color: "#0078d4", category: "action"  } },
-    ] as ExampleNode[],
-    edges: [
-      { id: "e1-2", source: "1", target: "2", type: "smoothstep", animated: true, style: { stroke: "#94a3b8", strokeWidth: 2 } },
-      { id: "e2-3", source: "2", target: "3", type: "smoothstep", animated: true, style: { stroke: "#94a3b8", strokeWidth: 2 } },
-      { id: "e3-4", source: "3", target: "4", type: "smoothstep", animated: true, style: { stroke: "#94a3b8", strokeWidth: 2 } },
-    ] as ExampleEdge[],
-  },
-  {
-    id: "client-followup",
-    title: "Weekly Follow-up Emails",
-    description: "Every Friday, check upcoming calendar events, filter client meetings, and send follow-up emails via Gmail.",
-    tags: ["Schedule", "Google Calendar", "IF Condition", "Gmail"],
-    color: "#f59e0b",
-    steps: [
-      { icon: "⏰", label: "Schedule", desc: "Runs every Friday at 4 PM" },
-      { icon: "📅", label: "Google Calendar", desc: "Get next week's events" },
-      { icon: "🔀", label: "IF Condition", desc: "Is it a client meeting?" },
-      { icon: "📧", label: "Gmail", desc: "Send follow-up email to client" },
-    ],
-    nodes: [
-      { id: "1", type: "appNode", position: { x: 60,  y: 180 }, data: { label: "Schedule",        icon: "⏰", color: "#8b5cf6", category: "trigger" } },
-      { id: "2", type: "appNode", position: { x: 300, y: 180 }, data: { label: "Google Calendar",  icon: "📅", color: "#4285f4", category: "action"  } },
-      { id: "3", type: "appNode", position: { x: 540, y: 180 }, data: { label: "IF Condition",     icon: "🔀", color: "#6b7280", category: "action"  } },
-      { id: "4", type: "appNode", position: { x: 760, y: 180 }, data: { label: "Gmail",            icon: "📧", color: "#ea4335", category: "action"  } },
-    ] as ExampleNode[],
-    edges: [
-      { id: "e1-2", source: "1", target: "2", type: "smoothstep", animated: true, style: { stroke: "#94a3b8", strokeWidth: 2 } },
-      { id: "e2-3", source: "2", target: "3", type: "smoothstep", animated: true, style: { stroke: "#94a3b8", strokeWidth: 2 } },
-      { id: "e3-4", source: "3", target: "4", type: "smoothstep", animated: true, style: { stroke: "#ea4335", strokeWidth: 2 } },
-    ] as ExampleEdge[],
-  },
-];
+// ── Habits Tab ────────────────────────────────────────────────────────────
+function HabitsTab({ userId }: { userId: string }) {
+  const [habits, setHabits]     = useState<Habit[]>([]);
+  const [logs, setLogs]         = useState<HabitLog[]>([]);
+  const [logs30, setLogs30]     = useState<HabitLog[]>([]);
+  const [newName, setNewName]   = useState("");
+  const [newColor, setNewColor] = useState(HABIT_COLORS[0]);
+  const [showColors, setShowColors] = useState(false);
+
+  const now = new Date();
+  const year = now.getFullYear(), month = now.getMonth();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+  const monthStart  = fmtDate(new Date(year, month, 1));
+  const monthEnd    = fmtDate(new Date(year, month, daysInMonth));
+  const since30     = fmtDate(new Date(Date.now() - 29 * 86400000));
+  const today       = todayStr();
+
+  const load = useCallback(async () => {
+    const [{ data: h }, { data: l }, { data: l30 }] = await Promise.all([
+      supabase.from("habits").select("*").eq("user_id", userId).order("created_at"),
+      supabase.from("habit_logs").select("habit_id,date").eq("user_id", userId).gte("date", monthStart).lte("date", monthEnd),
+      supabase.from("habit_logs").select("habit_id,date").eq("user_id", userId).gte("date", since30),
+    ]);
+    if (h) setHabits(h);
+    if (l) setLogs(l);
+    if (l30) setLogs30(l30 as HabitLog[]);
+  }, [userId, monthStart, monthEnd, since30]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const isDone = (hId: string, day: number) => logs.some(l => l.habit_id === hId && l.date === fmtDate(new Date(year, month, day)));
+
+  const toggle = async (hId: string, day: number) => {
+    const d = fmtDate(new Date(year, month, day));
+    if (d > today) return;
+    if (isDone(hId, day)) await supabase.from("habit_logs").delete().eq("habit_id", hId).eq("date", d);
+    else await supabase.from("habit_logs").insert({ user_id: userId, habit_id: hId, date: d });
+    load();
+  };
+
+  const streak = (hId: string) => {
+    let count = 0; const d = new Date(today);
+    while (logs.some(l => l.habit_id === hId && l.date === fmtDate(d))) { count++; d.setDate(d.getDate() - 1); }
+    return count;
+  };
+
+  const addHabit = async () => {
+    if (!newName.trim()) return;
+    await supabase.from("habits").insert({ user_id: userId, name: newName.trim(), color: newColor });
+    setNewName(""); setShowColors(false); load();
+  };
+
+  const days = Array.from({ length: daysInMonth }, (_, i) => i + 1);
+  const colW = `${100 / (daysInMonth + 3)}%`;
+  const nameW = `calc(${colW} * 2.5)`;
+
+  // Chart: 30-day completion rate
+  const completionData = Array.from({ length: 30 }, (_, i) => {
+    const d = fmtDate(new Date(Date.now() - (29 - i) * 86400000));
+    const done = logs30.filter(l => l.date === d).length;
+    return {
+      date: new Date(d + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+      Completion: habits.length > 0 ? Math.round((done / habits.length) * 100) : 0,
+    };
+  });
+
+  // Chart: current streaks per habit
+  const streakData = habits.map(h => ({ name: h.name, Streak: streak(h.id), fill: h.color }));
+
+  return (<>
+    <div className="tr-card">
+      <div className="tr-card-title">Habit Tracker</div>
+      <div className="tr-card-sub">Check off habits daily and build your streak.</div>
+      <div className="habit-add-row">
+        <input className="habit-add-input" placeholder="New habit name…" value={newName}
+          onChange={e => setNewName(e.target.value)} onKeyDown={e => e.key === "Enter" && addHabit()} />
+        <div className="habit-color-swatch" style={{ background: newColor }} onClick={() => setShowColors(v => !v)} />
+        <button className="habit-add-btn" onClick={addHabit}>+ Add Habit</button>
+      </div>
+      {showColors && (
+        <div className="habit-color-picker">
+          {HABIT_COLORS.map(c => (
+            <div key={c} className={`habit-color-dot${newColor === c ? " selected" : ""}`}
+              style={{ background: c }} onClick={() => { setNewColor(c); setShowColors(false); }} />
+          ))}
+        </div>
+      )}
+      {habits.length === 0 ? (
+        <div className="habit-empty">No habits yet. Add one above to start tracking.</div>
+      ) : (
+        <div className="habit-grid">
+          <div className="habit-month-label">{now.toLocaleString("default", { month: "long" })} {year}</div>
+          <div className="habit-grid-inner">
+            <div className="habit-grid-days" style={{ gridTemplateColumns: `${nameW} repeat(${daysInMonth}, ${colW}) calc(${colW} * 0.5)` }}>
+              <div />
+              {days.map(d => <div key={d} className="habit-day-label">{d}</div>)}
+              <div />
+            </div>
+            {habits.map(h => {
+              const s = streak(h.id);
+              return (
+                <div key={h.id} className="habit-row" style={{ gridTemplateColumns: `${nameW} repeat(${daysInMonth}, ${colW}) calc(${colW} * 0.5)` }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "0.25rem" }}>
+                    <span className="habit-row-name">{h.name}</span>
+                    <button className="habit-delete-btn" onClick={async () => { await supabase.from("habits").delete().eq("id", h.id); load(); }}>×</button>
+                  </div>
+                  {days.map(d => {
+                    const dStr = fmtDate(new Date(year, month, d));
+                    const done = isDone(h.id, d), future = dStr > today;
+                    return (
+                      <button key={d} className={`habit-cell${done ? " done" : ""}${future ? " future" : ""}${dStr === today ? " today" : ""}`}
+                        style={{ "--habit-color": h.color } as React.CSSProperties}
+                        onClick={() => toggle(h.id, d)} disabled={future} />
+                    );
+                  })}
+                  <div className="habit-row-streak">{s > 0 ? `🔥${s}` : ""}</div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+
+    {habits.length > 0 && (
+      <div className="tr-charts-row">
+        <div className="tr-card tr-chart-card">
+          <div className="tr-card-title">30-Day Completion Rate</div>
+          <div className="tr-card-sub">% of habits done each day</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <AreaChart data={completionData}>
+              <defs>
+                <linearGradient id="compGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%"  stopColor="#6366f1" stopOpacity={0.25} />
+                  <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+              <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#94a3b8" }} interval={6} />
+              <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} unit="%" domain={[0, 100]} />
+              <Tooltip formatter={(v: number) => [`${v}%`, "Completion"]} />
+              <Area type="monotone" dataKey="Completion" stroke="#6366f1" strokeWidth={2} fill="url(#compGrad)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        <div className="tr-card tr-chart-card">
+          <div className="tr-card-title">Current Streaks</div>
+          <div className="tr-card-sub">Consecutive days per habit</div>
+          <ResponsiveContainer width="100%" height={180}>
+            <BarChart data={streakData} layout="vertical" barSize={16}>
+              <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" horizontal={false} />
+              <XAxis type="number" tick={{ fontSize: 10, fill: "#94a3b8" }} allowDecimals={false} />
+              <YAxis type="category" dataKey="name" tick={{ fontSize: 11, fill: "#374151" }} width={80} />
+              <Tooltip formatter={(v: number) => [`${v} days`, "Streak"]} />
+              <Bar dataKey="Streak" radius={[0, 4, 4, 0]}>
+                {streakData.map((entry, i) => <Cell key={i} fill={entry.fill} />)}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    )}
+  </>);
+}
+
+// ── Planner Tab ───────────────────────────────────────────────────────────
+type PlannerView = "this-week" | "charts" | "goals";
+
+function PlannerTab({ userId, view }: { userId: string; view: PlannerView }) {
+  const [tasks, setTasks]       = useState<TTask[]>([]);
+  const [allTasks, setAllTasks] = useState<TTask[]>([]);
+  const [newTask, setNewTask]   = useState("");
+  const [dayInputs, setDayInputs] = useState<Record<string, string>>({});
+  const [weekOffset, setWeekOffset] = useState(0);
+
+  const now = new Date();
+  const dow = now.getDay();
+  const monday = new Date(now); monday.setDate(now.getDate() + (dow === 0 ? -6 : 1 - dow) + weekOffset * 7);
+  const weekDays  = Array.from({ length: 7 }, (_, i) => { const d = new Date(monday); d.setDate(monday.getDate() + i); return d; });
+  const weekStart = fmtDate(weekDays[0]), weekEnd = fmtDate(weekDays[6]);
+  const since8w   = fmtDate(new Date(Date.now() - 56 * 86400000));
+  const today     = todayStr();
+
+  const load = useCallback(async () => {
+    const [{ data: w }, { data: all }] = await Promise.all([
+      supabase.from("tasks").select("*").eq("user_id", userId)
+        .gte("date", weekStart).lte("date", weekEnd).order("created_at"),
+      supabase.from("tasks").select("date,completed,is_weekly_goal").eq("user_id", userId).gte("date", since8w),
+    ]);
+    if (w) setTasks(w as TTask[]);
+    if (all) setAllTasks(all as TTask[]);
+  }, [userId, weekStart, weekEnd, since8w]);
+
+  const broadcast = () => window.dispatchEvent(new Event("planner-refresh"));
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => {
+    const handler = () => load();
+    window.addEventListener("planner-refresh", handler);
+    return () => window.removeEventListener("planner-refresh", handler);
+  }, [load]);
+
+  const addTask = async () => {
+    const title = newTask.trim();
+    if (!title) return;
+    await supabase.from("tasks").insert({ user_id: userId, title, date: today, completed: false, is_weekly_goal: false });
+    setNewTask(""); broadcast();
+  };
+
+  const toggle = async (t: TTask) => { await supabase.from("tasks").update({ completed: !t.completed }).eq("id", t.id); broadcast(); };
+  const del    = async (id: string) => { await supabase.from("tasks").delete().eq("id", id); broadcast(); };
+
+  const todayTasks = tasks.filter(t => t.date === today);
+  const showYear = weekDays[0].getFullYear() !== now.getFullYear() || weekDays[6].getFullYear() !== now.getFullYear();
+  const fmtOpt = (d: Date) => d.toLocaleDateString("en-US", { month: "short", day: "numeric", ...(showYear ? { year: "numeric" } : {}) });
+  const weekLabel  = `${fmtOpt(weekDays[0])} – ${fmtOpt(weekDays[6])}`;
+  const dayNames   = ["Sun","Mon","Tue","Wed","Thu","Fri","Sat"];
+
+  const weeklyData = Array.from({ length: 8 }, (_, wi) => {
+    const wEnd = new Date(Date.now() - (7 - wi) * 7 * 86400000);
+    const wStart = new Date(wEnd); wStart.setDate(wEnd.getDate() - 6);
+    const ws = fmtDate(wStart), we = fmtDate(wEnd);
+    const wt = allTasks.filter(t => !t.is_weekly_goal && t.date && t.date >= ws && t.date <= we);
+    const monthShort = wStart.toLocaleDateString("en-US", { month: "short" });
+    const weekOfMonth = Math.ceil(wStart.getDate() / 7);
+    return {
+      week: `${monthShort} W${weekOfMonth}`,
+      Done: wt.filter(t => t.completed).length,
+      Todo: wt.filter(t => !t.completed).length,
+    };
+  });
+
+  const todayDone    = todayTasks.filter(t => t.completed).length;
+  const todayPieData = todayTasks.length > 0
+    ? [{ name: "Done", value: todayDone }, { name: "Remaining", value: todayTasks.filter(t => !t.completed).length }]
+    : [{ name: "No tasks", value: 1 }];
+
+  // ── This Week view ────────────────────────────────────────────────────
+  if (view === "this-week") {
+    const addDayTask = async (dStr: string) => {
+      const title = (dayInputs[dStr] || "").trim();
+      if (!title) return;
+      await supabase.from("tasks").insert({ user_id: userId, title, date: dStr, completed: false, is_weekly_goal: false });
+      setDayInputs(prev => ({ ...prev, [dStr]: "" }));
+      broadcast();
+    };
+
+    const copyToNext = async (title: string, fromDate: string) => {
+      const d = new Date(fromDate + "T12:00:00");
+      d.setDate(d.getDate() + 1);
+      await supabase.from("tasks").insert({ user_id: userId, title, date: fmtDate(d), completed: false, is_weekly_goal: false });
+      broadcast();
+    };
+
+    return (
+      <div className="tr-card" style={{ marginBottom: "1.5rem", overflow: "hidden" }}>
+        <div className="week-nav-header">
+          <div>
+            <div className="tr-card-title">Calendar</div>
+            <div className="tr-card-sub">{weekLabel}</div>
+          </div>
+          <div className="week-nav-btns">
+            <button className="week-nav-btn" onClick={() => setWeekOffset(o => o - 1)}>◀</button>
+            {weekOffset !== 0 && <button className="week-nav-today" onClick={() => setWeekOffset(0)}>Today</button>}
+            <button className="week-nav-btn" onClick={() => setWeekOffset(o => o + 1)}>▶</button>
+          </div>
+        </div>
+        <div className="week-days-scroll">
+        <div className="week-days-grid">
+          {weekDays.map((d, i) => {
+            const dStr = fmtDate(d);
+            const dayTasks = tasks.filter(t => t.date === dStr);
+            const isToday = dStr === today;
+            return (
+              <div key={i} className={`week-day-col${isToday ? " today-col" : ""}`}>
+                <div className="week-day-name">{dayNames[d.getDay()]}</div>
+                <div className="week-day-num">{d.getDate()}{isToday && <span className="today-dot" />}</div>
+                {dayTasks.map(t => (
+                  <div key={t.id} className={`week-task-chip${t.completed ? " done" : ""}`}>
+                    <button className="week-chip-check" onClick={() => toggle(t)}>{t.completed ? "✓" : "○"}</button>
+                    <span className="week-chip-title">{t.title}</span>
+                    <button className="week-chip-copy" title="Copy to next day" onClick={() => copyToNext(t.title, dStr)}>→</button>
+                    <button className="week-chip-del" onClick={() => del(t.id)}>×</button>
+                  </div>
+                ))}
+                <input
+                  className="week-day-input"
+                  placeholder="+ goal"
+                  value={dayInputs[dStr] || ""}
+                  onChange={e => setDayInputs(prev => ({ ...prev, [dStr]: e.target.value }))}
+                  onKeyDown={e => e.key === "Enter" && addDayTask(dStr)}
+                />
+              </div>
+            );
+          })}
+        </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Charts view ───────────────────────────────────────────────────────
+  if (view === "charts") {
+    return (<>
+      <div className="tr-card tr-chart-card">
+        <div className="tr-card-title">Weekly Task Completion</div>
+        <div className="tr-card-sub">Tasks done vs remaining — last 8 weeks</div>
+        <ResponsiveContainer width="100%" height={190}>
+          <BarChart data={weeklyData} barSize={14}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="week" tick={{ fontSize: 10, fill: "#94a3b8" }} />
+            <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} allowDecimals={false} />
+            <Tooltip />
+            <Legend wrapperStyle={{ fontSize: "0.8rem" }} />
+            <Bar dataKey="Done" fill="#10b981" radius={[3,3,0,0]} />
+            <Bar dataKey="Todo" fill="#e2e8f0" radius={[3,3,0,0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+
+      <div className="tr-card tr-chart-card" style={{ display: "flex", flexDirection: "column", alignItems: "center" }}>
+        <div className="tr-card-title" style={{ alignSelf: "flex-start" }}>Today&apos;s Progress</div>
+        <div className="tr-card-sub" style={{ alignSelf: "flex-start" }}>{todayDone} of {todayTasks.length} tasks done</div>
+        <ResponsiveContainer width="100%" height={190}>
+          <PieChart>
+            <Pie data={todayPieData} cx="50%" cy="50%" innerRadius={55} outerRadius={80} paddingAngle={3} dataKey="value">
+              {todayPieData.map((_, i) => (
+                <Cell key={i} fill={i === 0 ? "#10b981" : todayTasks.length === 0 ? "#f1f5f9" : "#e2e8f0"} />
+              ))}
+            </Pie>
+            <Tooltip />
+          </PieChart>
+        </ResponsiveContainer>
+        <div style={{ textAlign: "center", marginTop: "-0.5rem", fontSize: "1.4rem", fontWeight: 700, color: "#10b981" }}>
+          {todayTasks.length > 0 ? `${Math.round((todayDone / todayTasks.length) * 100)}%` : "—"}
+        </div>
+      </div>
+    </>);
+  }
+
+  return (<>
+    <div className="tr-card">
+      <div className="tr-card-title">Today&apos;s Tasks</div>
+      <div className="tr-card-sub">{new Date(today + "T12:00:00").toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}</div>
+      <div className="task-add-row">
+        <input className="task-add-input" placeholder="Add a task for today…" value={newTask}
+          onChange={e => setNewTask(e.target.value)} onKeyDown={e => e.key === "Enter" && addTask()} />
+        <button className="task-add-btn" onClick={() => addTask()}>+ Add</button>
+      </div>
+      <div className="task-list">
+        {todayTasks.length === 0 && <div className="task-empty">No tasks for today yet.</div>}
+        {todayTasks.map(t => (
+          <div key={t.id} className="task-item">
+            <div className={`task-check${t.completed ? " done" : ""}`} onClick={() => toggle(t)}>{t.completed && "✓"}</div>
+            <span className={`task-label${t.completed ? " done" : ""}`}>{t.title}</span>
+            <button className="task-delete" onClick={() => del(t.id)}>×</button>
+          </div>
+        ))}
+      </div>
+    </div>
+  </>);
+}
+
+// ── Pulse Tab ─────────────────────────────────────────────────────────────
+function PulseTab({ userId }: { userId: string }) {
+  const [sleep, setSleep]       = useState(0);
+  const [energy, setEnergy]     = useState(0);
+  const [mood, setMood]         = useState(0);
+  const [saved, setSaved]       = useState(false);
+  const [history, setHistory]   = useState<PulseEntry[]>([]);
+  const today = todayStr();
+  const sleepEmojis  = ["😴","🛌","😪","😊","⚡"];
+  const energyEmojis = ["🪫","😩","😐","💪","🚀"];
+  const moodEmojis   = ["😢","😕","😐","🙂","😄"];
+
+  const load = useCallback(async () => {
+    const since = fmtDate(new Date(Date.now() - 13 * 86400000));
+    const { data } = await supabase.from("daily_pulse").select("*").eq("user_id", userId).gte("date", since).order("date");
+    if (data) {
+      setHistory(data as PulseEntry[]);
+      const t = (data as PulseEntry[]).find(d => d.date === today);
+      if (t) { setSleep(t.sleep); setEnergy(t.energy); setMood(t.mood); setSaved(true); }
+    }
+  }, [userId, today]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const save = async () => {
+    if (!sleep || !energy || !mood) return;
+    await supabase.from("daily_pulse").upsert({ user_id: userId, date: today, sleep, energy, mood }, { onConflict: "user_id,date" });
+    setSaved(true); load();
+  };
+
+  const Metric = ({ label, icon, emojis, selected, onSelect }: { label: string; icon: string; emojis: string[]; selected: number; onSelect: (v: number) => void }) => (
+    <div className="pulse-metric">
+      <div className="pulse-metric-label"><span>{icon}</span>{label}</div>
+      <div className="pulse-emoji-row">
+        {emojis.map((e, i) => (
+          <button key={i} className={`pulse-emoji-btn${selected === i + 1 ? " selected" : ""}`}
+            onClick={() => { onSelect(i + 1); setSaved(false); }}>{e}</button>
+        ))}
+      </div>
+    </div>
+  );
+
+  // Chart data
+  const chartData = history.map(p => ({
+    date: new Date(p.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+    Sleep: p.sleep, Energy: p.energy, Mood: p.mood,
+  }));
+
+  const avg = (key: "sleep" | "energy" | "mood") =>
+    history.length ? (history.reduce((s, p) => s + p[key], 0) / history.length).toFixed(1) : "—";
+
+  return (<>
+    <div className="tr-card">
+      <div className="tr-card-title">Daily Check-in</div>
+      <div className="tr-card-sub">How are you doing today?</div>
+      <div className="pulse-metrics">
+        <Metric label="Sleep quality" icon="🌙" emojis={sleepEmojis}  selected={sleep}  onSelect={setSleep} />
+        <Metric label="Energy level"  icon="⚡" emojis={energyEmojis} selected={energy} onSelect={setEnergy} />
+        <Metric label="Mood"          icon="😊" emojis={moodEmojis}   selected={mood}   onSelect={setMood} />
+      </div>
+      <div style={{ display: "flex", alignItems: "center" }}>
+        <button className="pulse-save-btn" onClick={save} disabled={!sleep || !energy || !mood}>Save today&apos;s check-in</button>
+        {saved && <span className="pulse-saved-msg">✓ Saved</span>}
+      </div>
+    </div>
+
+    {history.length > 0 && (<>
+      {/* Avg stats */}
+      <div className="tr-card">
+        <div className="tr-card-title">14-Day Averages</div>
+        <div className="tr-card-sub">Your average sleep, energy, and mood this period.</div>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: "1rem" }}>
+          {[
+            { label: "Sleep",  icon: "🌙", val: avg("sleep"),  color: "#3b82f6" },
+            { label: "Energy", icon: "⚡", val: avg("energy"), color: "#f59e0b" },
+            { label: "Mood",   icon: "😊", val: avg("mood"),   color: "#10b981" },
+          ].map(s => (
+            <div key={s.label} style={{ background: "#f8fafc", borderRadius: 10, padding: "1rem", textAlign: "center", borderTop: `3px solid ${s.color}` }}>
+              <div style={{ fontSize: "1.5rem" }}>{s.icon}</div>
+              <div style={{ fontSize: "1.6rem", fontWeight: 700, color: s.color }}>{s.val}</div>
+              <div style={{ fontSize: "0.8rem", color: "#94a3b8", fontWeight: 600 }}>{s.label}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Line chart */}
+      <div className="tr-card">
+        <div className="tr-card-title">Trends — Last 14 Days</div>
+        <div className="tr-card-sub">Sleep, energy, and mood on a 1–5 scale</div>
+        <div style={{ display: "flex", gap: "1rem", marginBottom: "0.75rem", flexWrap: "wrap" }}>
+          {[["#3b82f6","Sleep"],["#f59e0b","Energy"],["#10b981","Mood"]].map(([c,l]) => (
+            <div key={l} style={{ display: "flex", alignItems: "center", gap: "0.4rem", fontSize: "0.8rem", color: "#64748b" }}>
+              <div style={{ width: 10, height: 10, borderRadius: "50%", background: c }} />{l}
+            </div>
+          ))}
+        </div>
+        <ResponsiveContainer width="100%" height={210}>
+          <LineChart data={chartData}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="date" tick={{ fontSize: 10, fill: "#94a3b8" }} interval={2} />
+            <YAxis domain={[0, 5]} ticks={[1,2,3,4,5]} tick={{ fontSize: 10, fill: "#94a3b8" }} />
+            <Tooltip />
+            <Line type="monotone" dataKey="Sleep"  stroke="#3b82f6" strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="Energy" stroke="#f59e0b" strokeWidth={2} dot={{ r: 3 }} />
+            <Line type="monotone" dataKey="Mood"   stroke="#10b981" strokeWidth={2} dot={{ r: 3 }} />
+          </LineChart>
+        </ResponsiveContainer>
+      </div>
+    </>)}
+  </>);
+}
+
+// ── Budget Tab ────────────────────────────────────────────────────────────
+const CURRENCIES = { USD: "$", EUR: "€", CZK: "Kč" } as const;
+type Currency = keyof typeof CURRENCIES;
+
+function BudgetTab({ userId }: { userId: string }) {
+  const [entries, setEntries]       = useState<BudgetRow[]>([]);
+  const [allEntries, setAllEntries] = useState<BudgetRow[]>([]);
+  const [type, setType]             = useState<"income" | "expense">("expense");
+  const [amount, setAmount]         = useState("");
+  const [category, setCategory]     = useState("Food");
+  const [date, setDate]             = useState(todayStr());
+  const [note, setNote]             = useState("");
+  const [currency, setCurrency]     = useState<Currency>("USD");
+
+  useEffect(() => {
+    const saved = localStorage.getItem(`budget_currency_${userId}`);
+    if (saved && saved in CURRENCIES) setCurrency(saved as Currency);
+  }, [userId]);
+
+  const changeCurrency = (c: Currency) => {
+    setCurrency(c);
+    localStorage.setItem(`budget_currency_${userId}`, c);
+  };
+
+  const sym = CURRENCIES[currency];
+
+  const now = new Date();
+  const monthStart = fmtDate(new Date(now.getFullYear(), now.getMonth(), 1));
+  const monthEnd   = fmtDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
+  const since6m    = fmtDate(new Date(now.getFullYear(), now.getMonth() - 5, 1));
+
+  const load = useCallback(async () => {
+    const [{ data: m }, { data: all }] = await Promise.all([
+      supabase.from("budget_entries").select("*").eq("user_id", userId).gte("date", monthStart).lte("date", monthEnd).order("date", { ascending: false }),
+      supabase.from("budget_entries").select("date,amount,type,category").eq("user_id", userId).gte("date", since6m),
+    ]);
+    if (m) setEntries(m as BudgetRow[]);
+    if (all) setAllEntries(all as BudgetRow[]);
+  }, [userId, monthStart, monthEnd, since6m]);
+
+  useEffect(() => { load(); }, [load]);
+  useEffect(() => { setCategory(type === "income" ? "Salary" : "Food"); }, [type]);
+
+  const add = async () => {
+    const amt = parseFloat(amount);
+    if (!amt || isNaN(amt) || amt <= 0) return;
+    await supabase.from("budget_entries").insert({ user_id: userId, amount: amt, category, type, date, note: note.trim() });
+    setAmount(""); setNote(""); load();
+  };
+
+  const totalIncome  = entries.filter(e => e.type === "income").reduce((s, e) => s + e.amount, 0);
+  const totalExpense = entries.filter(e => e.type === "expense").reduce((s, e) => s + e.amount, 0);
+  const balance      = totalIncome - totalExpense;
+
+  // Pie: expense by category this month
+  const pieData = EXPENSE_CATS.map(cat => ({
+    name: cat,
+    value: entries.filter(e => e.type === "expense" && e.category === cat).reduce((s, e) => s + e.amount, 0),
+  })).filter(d => d.value > 0);
+
+  // Bar: income vs expense last 6 months
+  const barData = Array.from({ length: 6 }, (_, mi) => {
+    const d = new Date(now.getFullYear(), now.getMonth() - (5 - mi), 1);
+    const ym = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
+    const inc = allEntries.filter(e => e.date.startsWith(ym) && e.type === "income").reduce((s, e) => s + e.amount, 0);
+    const exp = allEntries.filter(e => e.date.startsWith(ym) && e.type === "expense").reduce((s, e) => s + e.amount, 0);
+    return { month: d.toLocaleString("default", { month: "short" }), Income: Math.round(inc), Expenses: Math.round(exp) };
+  });
+
+  return (<>
+    <div className="tr-card">
+      <div className="tr-card-title">Budget — {now.toLocaleString("default", { month: "long", year: "numeric" })}</div>
+      <div className="tr-card-sub">Track your income and expenses this month.</div>
+      <div className="budget-summary">
+        <div className="budget-summary-card income"><div className="budget-summary-label">Income</div><div className="budget-summary-value">+{sym}{totalIncome.toFixed(2)}</div></div>
+        <div className="budget-summary-card expense"><div className="budget-summary-label">Expenses</div><div className="budget-summary-value">-{sym}{totalExpense.toFixed(2)}</div></div>
+        <div className="budget-summary-card balance"><div className="budget-summary-label">Balance</div><div className="budget-summary-value" style={{ color: balance >= 0 ? "#10b981" : "#ef4444" }}>{balance >= 0 ? "+" : ""}{sym}{balance.toFixed(2)}</div></div>
+      </div>
+      <div className="budget-form">
+        <div className="budget-field"><label>Currency</label>
+          <select className="budget-select" value={currency} onChange={e => changeCurrency(e.target.value as Currency)}>
+            {(Object.keys(CURRENCIES) as Currency[]).map(c => <option key={c} value={c}>{c} {CURRENCIES[c]}</option>)}
+          </select>
+        </div>
+        <div className="budget-field"><label>Type</label>
+          <select className="budget-select" value={type} onChange={e => setType(e.target.value as "income" | "expense")}>
+            <option value="expense">Expense</option><option value="income">Income</option>
+          </select>
+        </div>
+        <div className="budget-field"><label>Amount ({sym})</label>
+          <input className="budget-input" type="number" placeholder="0.00" value={amount}
+            onChange={e => setAmount(e.target.value)} onKeyDown={e => e.key === "Enter" && add()} style={{ width: 110 }} />
+        </div>
+        <div className="budget-field"><label>Category</label>
+          <select className="budget-select" value={category} onChange={e => setCategory(e.target.value)}>
+            {(type === "income" ? INCOME_CATS : EXPENSE_CATS).map(c => <option key={c}>{c}</option>)}
+          </select>
+        </div>
+        <div className="budget-field"><label>Date</label>
+          <input className="budget-input" type="date" value={date} onChange={e => setDate(e.target.value)} style={{ width: 140 }} />
+        </div>
+        <div className="budget-field"><label>Note</label>
+          <input className="budget-input" placeholder="Optional…" value={note} onChange={e => setNote(e.target.value)} />
+        </div>
+        <button className="budget-add-btn" onClick={add}>+ Add</button>
+      </div>
+      <div className="budget-list">
+        {entries.length === 0 && <div className="budget-empty">No entries this month yet.</div>}
+        {entries.map(e => (
+          <div key={e.id} className="budget-entry">
+            <div className={`budget-entry-type ${e.type}`}>{e.type === "income" ? "+" : "−"}</div>
+            <div className="budget-entry-cat">{e.category}{e.note ? ` · ${e.note}` : ""}</div>
+            <div className={`budget-entry-amount ${e.type}`}>{e.type === "income" ? "+" : "-"}{sym}{Number(e.amount).toFixed(2)}</div>
+            <div className="budget-entry-date">{new Date(e.date + "T12:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}</div>
+            <button className="budget-entry-delete" onClick={async () => { await supabase.from("budget_entries").delete().eq("id", e.id); load(); }}>×</button>
+          </div>
+        ))}
+      </div>
+    </div>
+
+    <div className="tr-charts-row">
+      <div className="tr-card tr-chart-card">
+        <div className="tr-card-title">Expenses by Category</div>
+        <div className="tr-card-sub">This month&apos;s spending breakdown</div>
+        {pieData.length === 0 ? (
+          <div className="budget-empty">No expenses recorded yet.</div>
+        ) : (
+          <ResponsiveContainer width="100%" height={210}>
+            <PieChart>
+              <Pie data={pieData} cx="50%" cy="50%" outerRadius={80} dataKey="value" label={({ name, percent }) => `${name} ${Math.round(percent * 100)}%`} labelLine={false}>
+                {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+              </Pie>
+              <Tooltip formatter={(v: number) => [`${sym}${v.toFixed(2)}`, ""]} />
+            </PieChart>
+          </ResponsiveContainer>
+        )}
+      </div>
+
+      <div className="tr-card tr-chart-card">
+        <div className="tr-card-title">Income vs Expenses</div>
+        <div className="tr-card-sub">Last 6 months</div>
+        <ResponsiveContainer width="100%" height={210}>
+          <BarChart data={barData} barSize={18}>
+            <CartesianGrid strokeDasharray="3 3" stroke="#f1f5f9" />
+            <XAxis dataKey="month" tick={{ fontSize: 11, fill: "#94a3b8" }} />
+            <YAxis tick={{ fontSize: 10, fill: "#94a3b8" }} />
+            <Tooltip formatter={(v: number) => `${sym}${v}`} />
+            <Legend wrapperStyle={{ fontSize: "0.8rem" }} />
+            <Bar dataKey="Income"   fill="#10b981" radius={[4,4,0,0]} />
+            <Bar dataKey="Expenses" fill="#ef4444" radius={[4,4,0,0]} />
+          </BarChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  </>);
+}
 
 function greeting() {
   const h = new Date().getHours();
@@ -176,8 +708,6 @@ export default function DashboardPage() {
   const [messageCount, setMessageCount] = useState(0);
   const [daysAsMember, setDaysAsMember] = useState(0);
   const [loading, setLoading] = useState(true);
-  const [copied, setCopied] = useState<string | null>(null);
-  const [recentRuns, setRecentRuns] = useState<RunRecord[]>([]);
   const [summary, setSummary] = useState<Summary | null>(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [connections, setConnections] = useState<Connection[]>([]);
@@ -202,6 +732,7 @@ export default function DashboardPage() {
   const [activityLog, setActivityLog] = useState<ActivityEntry[]>([]);
   const [toasts, setToasts] = useState<Toast[]>([]);
   const prevUnreadRef = useRef<number | null>(null);
+  const [dashTab, setDashTab] = useState<"overview" | "apps" | "tracker" | "finance" | "settings">("tracker");
   const notifiedMeetingsRef = useRef<Set<string>>(new Set());
   const toastIdRef = useRef(0);
 
@@ -223,9 +754,7 @@ export default function DashboardPage() {
 
       setLoading(false);
 
-      const runs: RunRecord[] = JSON.parse(localStorage.getItem("flowboard_runs") || "[]");
-      setRecentRuns(runs.slice(0, 5));
-      setActivityLog(JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]"));
+setActivityLog(JSON.parse(localStorage.getItem(ACTIVITY_KEY) || "[]"));
       setRepliedIds(new Set(JSON.parse(localStorage.getItem(REPLIED_IDS_KEY) || "[]")));
       fetchConnections(user.id);
       fetchEmails(user.id);
@@ -464,12 +993,6 @@ export default function DashboardPage() {
     }
   }
 
-  function copyPrompt(prompt: string) {
-    navigator.clipboard.writeText(prompt);
-    setCopied(prompt);
-    setTimeout(() => setCopied(null), 1500);
-  }
-
   function showToast(icon: string, text: string) {
     const id = ++toastIdRef.current;
     setToasts((prev) => [...prev, { id, icon, text }]);
@@ -528,11 +1051,6 @@ export default function DashboardPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
-  function loadWorkflow(wf: typeof EXAMPLE_WORKFLOWS[0]) {
-    localStorage.setItem("flowboard_canvas", JSON.stringify({ nodes: wf.nodes, edges: wf.edges }));
-    router.push("/workflow");
-  }
-
   if (loading) {
     return <div className="dash-loading"><div className="dash-spinner" /></div>;
   }
@@ -543,7 +1061,7 @@ export default function DashboardPage() {
 
   return (
     <div className="dash-page">
-      <NavBar onSignOut={handleSignOut} />
+      <NavBar onSignOut={handleSignOut} onSettings={() => setDashTab("settings")} />
 
       <main className="dash-main">
 
@@ -555,8 +1073,29 @@ export default function DashboardPage() {
           </div>
         </div>
 
+        {/* Tab bar */}
+        <div className="tracker-tabs" style={{ marginBottom: "2rem" }}>
+          {([
+            { key: "tracker",  label: "Tracker" },
+            { key: "finance",  label: "Finance" },
+            { key: "overview", label: "Overview" },
+            { key: "apps",     label: "Apps" },
+          ] as const).map(t => (
+            <button
+              key={t.key}
+              className={`tracker-tab-btn${dashTab === t.key ? " active" : ""}`}
+              onClick={() => setDashTab(t.key)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+
+        {/* ── OVERVIEW TAB ─────────────────────────────────────────── */}
+        {dashTab === "overview" && <>
         {/* Your Week — real data from connected apps */}
         <section className="dash-card dash-week">
+
           <div className="dash-week-header">
             <h2 className="dash-card-title" style={{ margin: 0 }}>Your Week at a Glance</h2>
             <button
@@ -674,7 +1213,6 @@ export default function DashboardPage() {
             </div>
           )}
         </section>
-
         {/* Inbox + Tasks two-column row */}
         <div className="dash-inbox-tasks-row">
 
@@ -872,7 +1410,10 @@ export default function DashboardPage() {
             </ul>
           )}
         </section>
+        </>}{/* end overview tab */}
 
+        {/* ── APPS TAB ─────────────────────────────────────────────── */}
+        {dashTab === "apps" && <>
         {/* Connected Apps — link / unlink */}
         <section className="dash-card">
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "0.75rem" }}>
@@ -921,131 +1462,11 @@ export default function DashboardPage() {
             })}
           </div>
         </section>
+        </>}{/* end apps tab */}
 
-        {/* How to build a workflow */}
-        <section className="dash-card dash-guide">
-          <h2 className="dash-card-title">How to Build a Workflow</h2>
-          <p className="dash-card-sub">
-            Open the <a href="/workflow">Workflow Builder</a> and follow these three steps.
-          </p>
-          <div className="dash-steps">
-            {STEPS.map((s) => (
-              <div key={s.number} className="dash-step" style={{ borderTopColor: s.color }}>
-                <div className="dash-step-num" style={{ background: s.color }}>{s.number}</div>
-                <div className="dash-step-icon">{s.icon}</div>
-                <h3 className="dash-step-title">{s.title}</h3>
-                <p className="dash-step-desc">{s.desc}</p>
-              </div>
-            ))}
-          </div>
-          <a href="/workflow" className="dash-action-btn primary" style={{ marginTop: "1.25rem", display: "inline-flex" }}>
-            ⚡ Open Workflow Builder
-          </a>
-        </section>
 
-        {/* Example Workflows */}
-        <section className="dash-card">
-          <h2 className="dash-card-title">Example Workflows</h2>
-          <p className="dash-card-sub">Click <strong>Open in Builder</strong> to load any example directly into the Workflow Builder.</p>
-          <div className="dash-examples">
-            {EXAMPLE_WORKFLOWS.map((wf) => (
-              <div key={wf.id} className="dash-example" style={{ borderTopColor: wf.color }}>
-                <div className="dash-example-header">
-                  <div>
-                    <h3 className="dash-example-title">{wf.title}</h3>
-                    <p className="dash-example-desc">{wf.description}</p>
-                  </div>
-                  <button className="dash-example-btn" style={{ background: wf.color }} onClick={() => loadWorkflow(wf)}>
-                    Open in Builder →
-                  </button>
-                </div>
-                <div className="dash-example-flow">
-                  {wf.steps.map((step, i) => (
-                    <div key={i} className="dash-example-flow-row">
-                      <div className="dash-example-node">
-                        <span className="dash-example-node-icon">{step.icon}</span>
-                        <div>
-                          <div className="dash-example-node-label">{step.label}</div>
-                          <div className="dash-example-node-desc">{step.desc}</div>
-                        </div>
-                      </div>
-                      {i < wf.steps.length - 1 && <span className="dash-example-arrow">→</span>}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-        </section>
-
-        <div className="dash-bottom">
-          {/* Apps */}
-          <section className="dash-card">
-            <h2 className="dash-card-title">Supported Apps</h2>
-            <p className="dash-card-sub">Drag these from the left panel in the Workflow Builder.</p>
-            <div className="dash-apps-grid2">
-              {APPS.map((app) => (
-                <div key={app.key} className="dash-app2" style={{ borderColor: app.color + "55" }}>
-                  <span style={{ fontSize: "1.3rem" }}>{app.icon}</span>
-                  <span className="dash-app2-label">{app.label}</span>
-                </div>
-              ))}
-            </div>
-          </section>
-
-          {/* AI prompt ideas */}
-          <section className="dash-card">
-            <h2 className="dash-card-title">Ask the AI Assistant</h2>
-            <p className="dash-card-sub">
-              Open the <a href="/workflow">Workflow Builder</a>, then copy a prompt below and paste it into the AI chat.
-            </p>
-            <div className="dash-prompts">
-              {AI_PROMPTS.map((p) => (
-                <button
-                  key={p}
-                  className="dash-prompt-btn"
-                  onClick={() => copyPrompt(p)}
-                >
-                  <span className="dash-prompt-text">{p}</span>
-                  <span className="dash-prompt-copy">
-                    {copied === p ? "✓ Copied" : "Copy"}
-                  </span>
-                </button>
-              ))}
-            </div>
-          </section>
-        </div>
-
-        {/* Recent workflow runs */}
-        <section className="dash-card dash-runs">
-          <h2 className="dash-card-title">Recent Workflow Runs</h2>
-          <p className="dash-card-sub">
-            Results from your last runs in the <a href="/workflow">Workflow Builder</a>.
-          </p>
-          {recentRuns.length === 0 ? (
-            <div className="dash-runs-empty">
-              <span>No runs yet.</span>
-              <a href="/workflow" className="dash-action-btn primary" style={{ display: "inline-flex", marginTop: "0.75rem" }}>
-                ▶ Run your first workflow
-              </a>
-            </div>
-          ) : (
-            <div className="dash-runs-list">
-              {recentRuns.map((run) => (
-                <div key={run.id} className="dash-run-item">
-                  <div className="dash-run-meta">
-                    <span className="dash-run-nodes">{run.nodes.join(" → ")}</span>
-                    <span className="dash-run-ts">
-                      {new Date(run.ts).toLocaleDateString("en-US", { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                    </span>
-                  </div>
-                  <pre className="dash-run-result">{String(run.result)}</pre>
-                </div>
-              ))}
-            </div>
-          )}
-        </section>
-
+        {/* ── SETTINGS TAB ─────────────────────────────────────────── */}
+        {dashTab === "settings" && <>
         {/* Danger Zone */}
         <section className="dash-card dash-danger-zone">
           <h2 className="dash-card-title" style={{ color: "#dc2626" }}>Danger Zone</h2>
@@ -1055,6 +1476,30 @@ export default function DashboardPage() {
             Delete My Account
           </button>
         </section>
+        </>}{/* end settings tab */}
+
+        {/* ── TRACKER TAB ───────────────────────────────────────────── */}
+        {dashTab === "tracker" && user && <>
+          {/* This Week — full-width strip */}
+          <PlannerTab userId={user.id} view="this-week" />
+
+          {/* Charts row */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", marginBottom: "1.5rem" }}>
+            <PlannerTab userId={user.id} view="charts" />
+          </div>
+
+          {/* Weekly Goals + Habit Tracker */}
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "2rem", alignItems: "start", marginBottom: "1.5rem" }}>
+            <div><PlannerTab userId={user.id} view="goals" /></div>
+            <div><HabitsTab  userId={user.id} /></div>
+          </div>
+
+          {/* Daily Pulse */}
+          <PulseTab userId={user.id} />
+        </>}
+
+        {/* ── FINANCE TAB ───────────────────────────────────────────── */}
+        {dashTab === "finance" && user && <BudgetTab userId={user.id} />}
 
       </main>
 

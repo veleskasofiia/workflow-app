@@ -1,7 +1,7 @@
 "use client";
 import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabaseClient";
 
 const LINKS = [
@@ -10,16 +10,28 @@ const LINKS = [
   { href: "/workflow",  label: "Workflow Builder" },
 ];
 
-export default function NavBar({ onSignOut }: { onSignOut?: () => void }) {
+export default function NavBar({ onSignOut, onSettings }: { onSignOut?: () => void; onSettings?: () => void }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isDark, setIsDark] = useState(false);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     const stored = localStorage.getItem("flowboard_theme");
     const dark = stored === "dark";
     setIsDark(dark);
     document.documentElement.setAttribute("data-theme", dark ? "dark" : "light");
+  }, []);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
   }, []);
 
   function toggleTheme() {
@@ -31,9 +43,15 @@ export default function NavBar({ onSignOut }: { onSignOut?: () => void }) {
   }
 
   async function handleSignOut() {
+    setMenuOpen(false);
     await supabase.auth.signOut();
     if (onSignOut) onSignOut();
     else router.push("/");
+  }
+
+  function handleSettings() {
+    setMenuOpen(false);
+    if (onSettings) onSettings();
   }
 
   return (
@@ -61,7 +79,25 @@ export default function NavBar({ onSignOut }: { onSignOut?: () => void }) {
       >
         {isDark ? "☀️" : "🌙"}
       </button>
-      <button className="app-nav-signout" onClick={handleSignOut}>Sign Out</button>
+
+      {/* User menu */}
+      <div ref={menuRef} style={{ position: "relative" }}>
+        <button className="app-nav-user-btn" onClick={() => setMenuOpen(v => !v)}>
+          <span className="app-nav-user-avatar">U</span>
+          <span className="app-nav-user-chevron">{menuOpen ? "▲" : "▼"}</span>
+        </button>
+        {menuOpen && (
+          <div className="app-nav-dropdown">
+            <button className="app-nav-dropdown-item" onClick={handleSettings}>
+              ⚙ Settings
+            </button>
+            <div className="app-nav-dropdown-divider" />
+            <button className="app-nav-dropdown-item danger" onClick={handleSignOut}>
+              Sign Out
+            </button>
+          </div>
+        )}
+      </div>
     </header>
   );
 }
